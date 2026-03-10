@@ -1,0 +1,559 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Project Genesis — Prisma Schema
+// Cinematic AI Movie Generation Platform
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ────────────────────────────────────────────────────────────────────
+
+enum SubscriptionTier {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum ProjectStatus {
+  DRAFT
+  PRE_PRODUCTION
+  IN_PRODUCTION
+  POST_PRODUCTION
+  RENDERING
+  COMPLETED
+  ARCHIVED
+}
+
+enum Genre {
+  ACTION
+  COMEDY
+  DRAMA
+  HORROR
+  SCI_FI
+  FANTASY
+  DOCUMENTARY
+  ANIMATION
+  THRILLER
+  ROMANCE
+  EXPERIMENTAL
+  OTHER
+}
+
+enum SceneStatus {
+  DRAFT
+  SCRIPTED
+  STORYBOARDED
+  IN_PRODUCTION
+  RENDERED
+  APPROVED
+}
+
+enum ShotStatus {
+  PENDING
+  QUEUED
+  GENERATING
+  GENERATED
+  UPSCALING
+  COMPLETED
+  FAILED
+  REJECTED
+}
+
+enum ShotType {
+  WIDE
+  MEDIUM
+  CLOSE_UP
+  EXTREME_CLOSE_UP
+  OVER_THE_SHOULDER
+  POV
+  AERIAL
+  TRACKING
+  ESTABLISHING
+  INSERT
+  TWO_SHOT
+}
+
+enum CameraAngle {
+  EYE_LEVEL
+  LOW_ANGLE
+  HIGH_ANGLE
+  BIRDS_EYE
+  DUTCH_ANGLE
+  WORMS_EYE
+}
+
+enum CameraMovement {
+  STATIC
+  PAN_LEFT
+  PAN_RIGHT
+  TILT_UP
+  TILT_DOWN
+  DOLLY_IN
+  DOLLY_OUT
+  CRANE_UP
+  CRANE_DOWN
+  TRACKING
+  HANDHELD
+  STEADICAM
+  ZOOM_IN
+  ZOOM_OUT
+  ORBIT
+}
+
+enum TimeOfDay {
+  DAWN
+  MORNING
+  MIDDAY
+  AFTERNOON
+  GOLDEN_HOUR
+  DUSK
+  NIGHT
+  MIDNIGHT
+}
+
+enum Weather {
+  CLEAR
+  CLOUDY
+  OVERCAST
+  RAINY
+  STORMY
+  SNOWY
+  FOGGY
+  WINDY
+  HAZY
+}
+
+enum AudioTrackType {
+  DIALOGUE
+  MUSIC
+  SFX
+  AMBIENT
+  FOLEY
+  VOICEOVER
+}
+
+enum RenderJobType {
+  SHOT_GENERATION
+  UPSCALE
+  INTERPOLATION
+  COMPOSITE
+  FINAL_RENDER
+  AUDIO_SYNC
+}
+
+enum RenderJobStatus {
+  PENDING
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ProjectMemberRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+enum CreditTransactionType {
+  PURCHASE
+  USAGE
+  REFUND
+  BONUS
+  SUBSCRIPTION
+}
+
+enum TemplateCategory {
+  STORY_STARTER
+  CHARACTER_ARCHETYPE
+  SCENE_COMPOSITION
+  FULL_MOVIE
+  STYLE_PRESET
+  CAMERA_MOVEMENT
+}
+
+enum CreditTransactionStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  REFUNDED
+}
+
+// ── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id               String           @id @default(cuid())
+  email            String           @unique
+  username         String           @unique
+  displayName      String
+  passwordHash     String?
+  avatarUrl        String?
+  subscriptionTier SubscriptionTier @default(FREE)
+  creditsBalance   Float            @default(0)
+  creditsPurchased Float            @default(0)
+  creditsUsed      Float            @default(0)
+  stripeCustomerId String?          @unique
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  projects           Project[]
+  renderJobs         RenderJob[]
+  creditTransactions CreditTransaction[]
+  projectMemberships ProjectMember[]     @relation("MemberUser")
+  invitationsSent    ProjectMember[]     @relation("InvitedByUser")
+  templates          Template[]
+  analytics          Analytics[]
+  viewEvents         ViewEvent[]
+
+  @@index([email])
+  @@index([subscriptionTier])
+  @@index([stripeCustomerId])
+  @@map("users")
+}
+
+model CreditTransaction {
+  id          String                  @id @default(cuid())
+  userId      String
+  amount      Float
+  type        CreditTransactionType
+  status      CreditTransactionStatus @default(CONFIRMED)
+  description String
+  metadata    Json?
+  createdAt   DateTime                @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, type])
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("credit_transactions")
+}
+
+model SubscriptionPlan {
+  id              String           @id @default(cuid())
+  name            String
+  tier            SubscriptionTier
+  priceMonthly    Float
+  creditsPerMonth Int
+  features        String[]
+  stripePriceId   String?
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+
+  @@index([tier])
+  @@index([isActive])
+  @@map("subscription_plans")
+}
+
+model Project {
+  id              String        @id @default(cuid())
+  userId          String
+  title           String
+  description     String?
+  genre           Genre         @default(OTHER)
+  status          ProjectStatus @default(DRAFT)
+  stylePreset     String?
+  resolution      String        @default("1920x1080")
+  fps             Int           @default(24)
+  aspectRatio     String        @default("16:9")
+  thumbnailUrl    String?
+  finalVideoUrl   String?
+  totalCostCredits Float        @default(0)
+  metadata        Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scripts     Script[]
+  characters  Character[]
+  scenes      Scene[]
+  audioTracks AudioTrack[]
+  renderJobs  RenderJob[]
+  members     ProjectMember[]
+  analytics   Analytics[]
+  viewEvents  ViewEvent[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([genre])
+  @@index([createdAt])
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id            String            @id @default(cuid())
+  projectId     String
+  userId        String
+  role          ProjectMemberRole @default(VIEWER)
+  canEdit       Boolean           @default(false)
+  canDelete     Boolean           @default(false)
+  canShare      Boolean           @default(false)
+  status        InvitationStatus  @default(PENDING)
+  invitedById   String?
+  invitedAt     DateTime          @default(now())
+  acceptedAt    DateTime?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User    @relation("MemberUser", fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy User?   @relation("InvitedByUser", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+  @@index([status])
+  @@map("project_members")
+}
+
+model Script {
+  id              String   @id @default(cuid())
+  projectId       String
+  version         Int      @default(1)
+  rawPrompt       String
+  generatedScript String?  @db.Text
+  scriptJson      Json?
+  tone            String?
+  createdAt       DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenes  Scene[]
+
+  @@index([projectId])
+  @@index([projectId, version])
+  @@map("scripts")
+}
+
+model Character {
+  id               String   @id @default(cuid())
+  projectId        String
+  name             String
+  description      String?  @db.Text
+  appearancePrompt String?  @db.Text
+  personalityTraits String[]
+  voiceProfile     Json?
+  referenceImages  String[]
+  faceEmbedding    String?  @db.Text
+  ageRange         String?
+  createdAt        DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([projectId, name])
+  @@map("characters")
+}
+
+model Scene {
+  id                  String      @id @default(cuid())
+  projectId           String
+  scriptId            String?
+  sceneNumber         Int
+  title               String
+  locationDescription String?     @db.Text
+  timeOfDay           TimeOfDay   @default(MIDDAY)
+  weather             Weather     @default(CLEAR)
+  mood                String?
+  durationSeconds     Float?
+  dialogue            Json?
+  actionDescription   String?     @db.Text
+  cameraInstructions  Json?
+  status              SceneStatus @default(DRAFT)
+  createdAt           DateTime    @default(now())
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  script      Script?      @relation(fields: [scriptId], references: [id], onDelete: SetNull)
+  shots       Shot[]
+  audioTracks AudioTrack[]
+
+  @@index([projectId])
+  @@index([projectId, sceneNumber])
+  @@index([scriptId])
+  @@index([status])
+  @@map("scenes")
+}
+
+model Shot {
+  id                   String          @id @default(cuid())
+  sceneId              String
+  shotNumber           Int
+  shotType             ShotType        @default(MEDIUM)
+  cameraAngle          CameraAngle     @default(EYE_LEVEL)
+  cameraMovement       CameraMovement  @default(STATIC)
+  durationSeconds      Float           @default(3)
+  description          String?         @db.Text
+  charactersInShot     String[]
+  visualPrompt         String?         @db.Text
+  negativePrompt       String?         @db.Text
+  generatedVideoUrl    String?
+  generatedThumbnailUrl String?
+  generationParams     Json?
+  qualityScore         Float?
+  status               ShotStatus      @default(PENDING)
+  renderJobId          String?
+  createdAt            DateTime        @default(now())
+
+  scene      Scene       @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  renderJobs RenderJob[]
+
+  @@index([sceneId])
+  @@index([sceneId, shotNumber])
+  @@index([status])
+  @@index([renderJobId])
+  @@map("shots")
+}
+
+model AudioTrack {
+  id               String         @id @default(cuid())
+  projectId        String
+  sceneId          String?
+  trackType        AudioTrackType @default(MUSIC)
+  audioUrl         String?
+  durationSeconds  Float?
+  startTimeSeconds Float          @default(0)
+  volume           Float          @default(1.0)
+  generationParams Json?
+  createdAt        DateTime       @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scene   Scene?  @relation(fields: [sceneId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([sceneId])
+  @@index([trackType])
+  @@map("audio_tracks")
+}
+
+model RenderJob {
+  id           String          @id @default(cuid())
+  projectId    String
+  shotId       String?
+  userId       String
+  jobType      RenderJobType   @default(SHOT_GENERATION)
+  status       RenderJobStatus @default(PENDING)
+  gpuNode      String?
+  progress     Float           @default(0)
+  startedAt    DateTime?
+  completedAt  DateTime?
+  errorMessage String?         @db.Text
+  outputUrl    String?
+  costCredits  Float           @default(0)
+  metadata     Json?
+  createdAt    DateTime        @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shot    Shot?   @relation(fields: [shotId], references: [id], onDelete: SetNull)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([shotId])
+  @@index([userId])
+  @@index([status])
+  @@index([jobType, status])
+  @@index([createdAt])
+  @@map("render_jobs")
+}
+
+model Template {
+  id                 String           @id @default(cuid())
+  name               String
+  category           TemplateCategory
+  description        String?          @db.Text
+  previewUrl         String?
+  promptTemplate     String?          @db.Text
+  genre              Genre?
+  stylePreset        String?
+  characterTemplates Json?
+  sceneTemplates     Json?
+  settingsTemplate   Json?
+  isPublic           Boolean          @default(true)
+  isPremium          Boolean          @default(false)
+  createdById        String?
+  usageCount         Int              @default(0)
+  rating             Float            @default(0)
+  tags               String[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([category])
+  @@index([genre])
+  @@index([isPublic])
+  @@index([isPremium])
+  @@index([usageCount])
+  @@index([rating])
+  @@index([createdById])
+  @@map("templates")
+}
+
+// ── Analytics ────────────────────────────────────────────────────────────────
+
+model Analytics {
+  id                     String   @id @default(cuid())
+  projectId              String
+  userId                 String
+  views                  Int      @default(0)
+  uniqueViews            Int      @default(0)
+  watchTime              Float    @default(0)
+  likes                  Int      @default(0)
+  shares                 Int      @default(0)
+  comments               Int      @default(0)
+  completionRate         Float    @default(0)
+  averageWatchPercentage Float    @default(0)
+  trafficSources         Json?
+  viewerDemographics     Json?
+  date                   DateTime @db.Date
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, date])
+  @@index([projectId])
+  @@index([userId])
+  @@index([date])
+  @@index([projectId, date])
+  @@index([userId, date])
+  @@map("analytics")
+}
+
+model ViewEvent {
+  id             String    @id @default(cuid())
+  projectId      String
+  userId         String?
+  sessionId      String
+  watchedSeconds Float     @default(0)
+  totalDuration  Float     @default(0)
+  completedAt    DateTime?
+  deviceType     String?
+  country        String?
+  referrer       String?
+  createdAt      DateTime  @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([userId])
+  @@index([sessionId])
+  @@index([createdAt])
+  @@index([projectId, createdAt])
+  @@index([country])
+  @@map("view_events")
+}

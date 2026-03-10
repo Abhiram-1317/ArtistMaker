@@ -1,0 +1,36 @@
+{
+  "name": "@genesis/ui",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./*": "./src/*.tsx"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-toast": "^1.2.15",
+    "react": "^18.2.0",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@genesis/eslint-config": "*",
+    "@genesis/typescript-config": "*",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.3.7",
+    "eslint": "^8.57.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.4.0"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}

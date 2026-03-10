@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "plugins": [{ "name": "next" }],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "jsx": "preserve",
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "incremental": true,
+    "lib": ["DOM", "DOM.Iterable", "ES2022"]
+  }
+}
