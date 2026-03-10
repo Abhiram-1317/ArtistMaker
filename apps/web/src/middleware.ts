@@ -2,11 +2,6 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-/**
- * Middleware that protects all /dashboard routes.
- * Unauthenticated users are redirected to /login with a callbackUrl
- * so they return to the originally-requested page after signing in.
- */
 export async function middleware(request: NextRequest) {
   const token = await getToken({
     req: request,
@@ -15,8 +10,28 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  // ── CSRF protection for mutating API routes ─────────────────────────────
+  if (
+    pathname.startsWith("/api/") &&
+    !pathname.startsWith("/api/auth/") &&
+    ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)
+  ) {
+    const origin = request.headers.get("origin");
+    const host = request.headers.get("host");
+    if (origin && host) {
+      try {
+        const originUrl = new URL(origin);
+        if (originUrl.host !== host) {
+          return new NextResponse("CSRF validation failed", { status: 403 });
+        }
+      } catch {
+        return new NextResponse("Invalid origin", { status: 403 });
+      }
+    }
+  }
+
   // ── Protected routes ────────────────────────────────────────────────────
-  if (pathname.startsWith("/dashboard")) {
+  if (pathname.startsWith("/dashboard") || pathname.startsWith("/projects")) {
     if (!token) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("callbackUrl", pathname);
@@ -31,9 +46,17 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+
+  // ── Secure cookie attributes ────────────────────────────────────────────
+  if (process.env.NODE_ENV === "production") {
+    response.headers.set("X-Frame-Options", "DENY");
+    response.headers.set("X-Content-Type-Options", "nosniff");
+  }
+
+  return response;
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login", "/register"],
+  matcher: ["/dashboard/:path*", "/projects/:path*", "/login", "/register", "/api/:path*"],
 };

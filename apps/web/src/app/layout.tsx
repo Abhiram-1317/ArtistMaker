@@ -3,6 +3,7 @@ import { Inter, Space_Grotesk } from "next/font/google";
 import { ToastProvider } from "@genesis/ui";
 import { AuthProvider } from "@/components/auth-provider";
 import { QueryProvider } from "@/components/query-provider";
+import { OrganizationJsonLd, WebApplicationJsonLd } from "@/components/seo/json-ld";
 import "./globals.css";
 
 const inter = Inter({
@@ -82,6 +83,8 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://images.unsplash.com" />
         <link rel="preconnect" href="https://i.pravatar.cc" />
         <link rel="dns-prefetch" href="https://i.pravatar.cc" />
+        <OrganizationJsonLd />
+        <WebApplicationJsonLd />
       </head>
       <body className="min-h-screen bg-surface text-gray-100 font-sans antialiased">
         <a href="#main-content" className="skip-link">

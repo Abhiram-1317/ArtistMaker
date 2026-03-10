@@ -714,23 +714,48 @@ export default function LandingPage() {
       {/* ────────────────────────── FOOTER ──────────────────────────────── */}
       <footer className="relative z-10 border-t border-white/[0.06] safe-bottom">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-6">
-            <div className="flex items-center gap-2.5">
-              <span className="text-xl">🎬</span>
-              <span className="font-heading text-sm font-bold gradient-text-subtle">
-                Project Genesis
-              </span>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+            <div className="md:col-span-1">
+              <div className="flex items-center gap-2.5 mb-3">
+                <span className="text-xl">🎬</span>
+                <span className="font-heading text-sm font-bold gradient-text-subtle">
+                  Project Genesis
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                The AI-powered filmmaking platform that transforms your imagination into cinema.
+              </p>
             </div>
-
-            <div className="flex items-center gap-6 text-sm text-gray-500">
-              <a href="#showcase" className="hover:text-gray-300 transition-colors">Showcase</a>
-              <a href="#how-it-works" className="hover:text-gray-300 transition-colors">How It Works</a>
-              <Link href="/login" className="hover:text-gray-300 transition-colors">Sign In</Link>
-              <Link href="/register" className="hover:text-gray-300 transition-colors">Get Started</Link>
+            <div>
+              <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-3">Product</h4>
+              <ul className="space-y-2 text-sm text-gray-500">
+                <li><a href="#showcase" className="hover:text-gray-300 transition-colors">Showcase</a></li>
+                <li><a href="#how-it-works" className="hover:text-gray-300 transition-colors">How It Works</a></li>
+                <li><Link href="/explore" className="hover:text-gray-300 transition-colors">Explore</Link></li>
+              </ul>
             </div>
-
-            <p className="text-sm text-gray-600">
+            <div>
+              <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-3">Account</h4>
+              <ul className="space-y-2 text-sm text-gray-500">
+                <li><Link href="/login" className="hover:text-gray-300 transition-colors">Sign In</Link></li>
+                <li><Link href="/register" className="hover:text-gray-300 transition-colors">Get Started</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-3">Legal</h4>
+              <ul className="space-y-2 text-sm text-gray-500">
+                <li><Link href="/privacy" className="hover:text-gray-300 transition-colors">Privacy Policy</Link></li>
+                <li><Link href="/terms" className="hover:text-gray-300 transition-colors">Terms of Service</Link></li>
+                <li><Link href="/cookies" className="hover:text-gray-300 transition-colors">Cookie Policy</Link></li>
+              </ul>
+            </div>
+          </div>
+          <div className="border-t border-white/[0.06] pt-6 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <p className="text-xs text-gray-600">
               &copy; {new Date().getFullYear()} Project Genesis. All rights reserved.
+            </p>
+            <p className="text-xs text-gray-600">
+              Made with AI, crafted with passion.
             </p>
           </div>
         </div>

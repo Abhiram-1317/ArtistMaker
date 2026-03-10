@@ -80,7 +80,8 @@
       bg-gradient-to-r from-genesis-600 to-genesis-500
       hover:from-genesis-500 hover:to-genesis-400
       shadow-lg shadow-genesis-500/25 hover:shadow-genesis-500/40
-      transition-all duration-300
+      transition-all duration-[100ms]
+      active:scale-[0.97]
       focus:outline-none focus:ring-2 focus:ring-genesis-500 focus:ring-offset-2 focus:ring-offset-surface;
   }
 
@@ -89,8 +90,13 @@
       font-medium text-gray-300
       bg-surface-raised border border-surface-border
       hover:bg-surface-overlay hover:text-white hover:border-genesis-700
-      transition-all duration-300
+      transition-all duration-[100ms]
+      active:scale-[0.97]
       focus:outline-none focus:ring-2 focus:ring-genesis-500 focus:ring-offset-2 focus:ring-offset-surface;
+  }
+
+  .card-hover {
+    @apply glass-hover p-6 hover:scale-[1.01] transition-all duration-[200ms];
   }
 
   .input-field {
@@ -103,10 +109,6 @@
 
   .card {
     @apply glass p-6 rounded-2xl;
-  }
-
-  .card-hover {
-    @apply glass-hover p-6;
   }
 }
 
