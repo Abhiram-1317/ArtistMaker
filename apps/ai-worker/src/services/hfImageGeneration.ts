@@ -29,7 +29,7 @@ export class HFImageGenerationService {
       );
     }
     this.apiUrl =
-      "https://router.huggingface.co/hf-inference/models/stabilityai/sd-turbo";
+      "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell";
     this.headers = {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -49,10 +49,8 @@ export class HFImageGenerationService {
         negative_prompt:
           config.negativePrompt ||
           "blurry, low quality, distorted, deformed, ugly",
-        width: config.width || 512,
-        height: config.height || 512,
-        num_inference_steps: config.numSteps || 4,
-        guidance_scale: config.guidanceScale ?? 0.0,
+        width: config.width || 1024,
+        height: config.height || 1024,
         ...(config.seed !== undefined && config.seed !== -1
           ? { seed: config.seed }
           : {}),
