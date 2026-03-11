@@ -1,6 +1,7 @@
 import torch
-from diffusers import StableVideoDiffusionPipeline
-from diffusers.utils import load_image, export_to_video
+from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion import StableVideoDiffusionPipeline
+from diffusers.utils.loading_utils import load_image
+from diffusers.utils.export_utils import export_to_video
 import sys
 import json
 
@@ -37,7 +38,7 @@ class SVDGenerator:
             num_frames=num_frames,
             motion_bucket_id=motion_bucket_id,
             noise_aug_strength=noise_aug_strength,
-        ).frames[0]
+        ).frames[0]  # type: ignore[union-attr]
         
         return frames, fps
 
@@ -56,7 +57,7 @@ def main():
     
     # Export
     output_path = config['output_path']
-    export_to_video(frames, output_path, fps=fps)
+    export_to_video(frames, output_path, fps=fps)  # type: ignore[arg-type]
     
     print(json.dumps({
         "success": True,

@@ -14,3 +14,17 @@ huggingface-hub>=0.23.0
 
 # Image processing
 Pillow>=10.0.0
+
+# Voice generation (Coqui TTS)
+coqui-tts>=0.24.0
+
+# Music & SFX generation (AudioCraft)
+audiocraft>=1.3.0
+
+# Video enhancement
+opencv-python-headless>=4.8.0
+realesrgan>=0.3.0
+basicsr>=1.4.0
+
+# Frame interpolation (optional — falls back to OpenCV optical flow)
+# rife-ncnn-vulkan-python

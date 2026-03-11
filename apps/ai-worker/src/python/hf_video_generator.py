@@ -77,7 +77,10 @@ def main():
         from huggingface_hub import InferenceClient
 
         token = os.environ.get("HF_TOKEN", "")
-        client = InferenceClient(token=token)
+        client = InferenceClient(
+            token=token,
+            headers={"X-Wait-For-Model": "true"},
+        )
 
         prompt = config["prompt"]
         print(f"Generating keyframe via HuggingFace API...", file=sys.stderr)
@@ -87,7 +90,7 @@ def main():
             prompt,
             model="black-forest-labs/FLUX.1-schnell",
             width=1024,
-            height=1024,
+            height=576,
         )
 
     print(f"Applying Ken Burns motion ({num_frames} frames @ {fps}fps)...", file=sys.stderr)

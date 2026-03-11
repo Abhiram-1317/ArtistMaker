@@ -2,6 +2,51 @@ import { PythonShell } from 'python-shell'
 import path from 'path'
 import fs from 'fs/promises'
 
+// ── SceneRequest / helper wrappers expected by the Bull queue worker ────────
+
+export interface SceneRequest {
+  projectId?: string
+  sceneId: string
+  sceneNumber?: number
+  prompt: string
+  negativePrompt?: string
+  style?: string
+  durationSeconds?: number
+  durationSec?: number
+  width?: number
+  height?: number
+  seed?: number
+}
+
+export async function generateScene(
+  scene: SceneRequest
+): Promise<{ success: boolean; outputPath?: string; totalDurationMs: number }> {
+  const start = Date.now()
+  try {
+    const service = new VideoGenerationService()
+    const outputPath = await service.generate({
+      prompt: scene.prompt,
+      negativePrompt: scene.negativePrompt,
+      numFrames: scene.durationSeconds ? Math.ceil(scene.durationSeconds * 8) : 16,
+    })
+    return { success: true, outputPath, totalDurationMs: Date.now() - start }
+  } catch (err) {
+    return { success: false, totalDurationMs: Date.now() - start }
+  }
+}
+
+export async function generateAllScenes(
+  scenes: SceneRequest[]
+): Promise<{ success: boolean; outputPath?: string; totalDurationMs: number }[]> {
+  const results = []
+  for (const scene of scenes) {
+    results.push(await generateScene(scene))
+  }
+  return results
+}
+
+// ── Video generation config & service ──────────────────────────────────────
+
 export interface VideoGenerationConfig {
   prompt: string
   negativePrompt?: string

@@ -1,0 +1,119 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Project Genesis — Docker Compose
+# Usage:
+#   cp .env.docker .env        # fill in secrets
+#   docker compose up -d       # start everything
+#   docker compose logs -f     # watch logs
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-genesis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-genesis}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-genesis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── API Server ──────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-genesis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-genesis}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      PORT: 3001
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+
+  # ── Web Frontend ────────────────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+        NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL:-http://localhost:3000}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET in .env}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-genesis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-genesis}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+
+  # ── AI Worker (GPU) ────────────────────────────────────────────────────────
+  ai-worker:
+    build:
+      context: apps/ai-worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379
+      API_URL: http://api:3001
+      WORKER_PORT: 3002
+      WORKER_HOST: 0.0.0.0
+      MODELS_DIR: /app/models
+      OUTPUT_DIR: /app/output
+      HF_TOKEN: ${HF_TOKEN:-}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      NODE_ENV: production
+    ports:
+      - "3002:3002"
+    volumes:
+      - models:/app/models
+      - output:/app/output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  pgdata:
+  redisdata:
+  models:
+  output:

@@ -5,14 +5,16 @@
 import { env } from "./config/env.js";
 import { buildApp } from "./app.js";
 import { startWorker, renderQueue } from "./queue/worker.js";
+import { startMovieRenderWorker, movieRenderQueue } from "./workers/movieRenderWorker.js";
 import { getGpuInfo } from "./config/gpu.js";
 
 async function start(): Promise<void> {
   const app = await buildApp();
 
-  // ── Start Bull queue worker ────────────────────────────────────────────
+  // ── Start Bull queue workers ───────────────────────────────────────────
 
   startWorker();
+  startMovieRenderWorker();
 
   // ── Graceful shutdown ──────────────────────────────────────────────────
 
@@ -23,6 +25,7 @@ async function start(): Promise<void> {
       app.log.info(`Received ${signal}, shutting down gracefully…`);
       try {
         await renderQueue.close();
+        await movieRenderQueue.close();
         await app.close();
         app.log.info("AI Worker shut down");
         process.exit(0);

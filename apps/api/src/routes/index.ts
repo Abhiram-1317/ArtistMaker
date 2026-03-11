@@ -20,6 +20,7 @@ import { stripeWebhookRoutes } from "./webhooks.js";
 import { collaborationRoutes } from "./collaboration.js";
 import { templateRoutes } from "./templates.js";
 import { analyticsRoutes } from "./analytics.js";
+import { renderRoutes } from "./render.js";
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // System routes (health check, ping)
@@ -56,6 +57,9 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Analytics routes (tracking + dashboards)
   await fastify.register(analyticsRoutes, { prefix: "/api/analytics" });
+
+  // Render routes (movie generation + status)
+  await fastify.register(renderRoutes, { prefix: "/api/render" });
 
   // Stripe webhook (no auth — verified by signature)
   await fastify.register(stripeWebhookRoutes, { prefix: "/api/webhooks/stripe" });

@@ -1,3 +1,4 @@
+# pyright: basic
 """
 Image generation using Stable Diffusion XL.
 Called by Node.js via python-shell — outputs JSON to stdout.
@@ -27,7 +28,7 @@ def main():
 
     try:
         import torch
-        from diffusers import StableDiffusionXLPipeline
+        from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
 
         models_dir = os.environ.get("MODELS_DIR", "./models")
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -56,7 +57,7 @@ def main():
             num_inference_steps=args.steps,
             guidance_scale=args.guidance_scale,
             generator=generator,
-        ).images[0]
+        ).images[0]  # type: ignore[union-attr]
 
         os.makedirs(os.path.dirname(args.output), exist_ok=True)
         image.save(args.output)

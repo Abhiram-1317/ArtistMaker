@@ -22,5 +22,8 @@
   "packageManager": "npm@10.2.0",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "framer-motion": "^11.18.2"
   }
 }

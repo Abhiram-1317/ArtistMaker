@@ -1,3 +1,4 @@
+# pyright: basic
 """
 Video generation using Stable Video Diffusion (image-to-video).
 Called by Node.js via python-shell — outputs JSON to stdout.
@@ -27,8 +28,8 @@ def main():
 
     try:
         import torch
-        from diffusers import StableVideoDiffusionPipeline
-        from diffusers.utils import export_to_video
+        from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion import StableVideoDiffusionPipeline
+        from diffusers.utils.export_utils import export_to_video
         from PIL import Image
 
         models_dir = os.environ.get("MODELS_DIR", "./models")
@@ -64,10 +65,10 @@ def main():
             decode_chunk_size=8,
             motion_bucket_id=int(args.motion_strength),
             generator=generator,
-        ).frames[0]
+        ).frames[0]  # type: ignore[union-attr]
 
         os.makedirs(os.path.dirname(args.output), exist_ok=True)
-        export_to_video(frames, args.output, fps=args.fps)
+        export_to_video(frames, args.output, fps=args.fps)  # type: ignore[arg-type]
 
         elapsed = time.time() - start
         print(json.dumps({

@@ -1,3 +1,4 @@
+# pyright: basic
 """
 Voice / TTS generation using Coqui XTTS v2.
 Called by Node.js via python-shell — outputs JSON to stdout.
@@ -26,7 +27,7 @@ def main():
         os.makedirs(os.path.dirname(args.output), exist_ok=True)
 
         if args.model == "coqui-tts":
-            from TTS.api import TTS
+            from TTS.api import TTS  # type: ignore[import-unresolved]
 
             tts = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2")
 
@@ -41,11 +42,11 @@ def main():
         elif args.model == "bark":
             from transformers import AutoProcessor, BarkModel
             import torch
-            import scipy.io.wavfile
+            import scipy.io.wavfile  # type: ignore[import-unresolved]
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
             processor = AutoProcessor.from_pretrained("suno/bark")
-            model = BarkModel.from_pretrained("suno/bark").to(device)
+            model = BarkModel.from_pretrained("suno/bark").to(device)  # type: ignore[arg-type]
 
             inputs = processor(args.text, return_tensors="pt").to(device)
             audio = model.generate(**inputs)

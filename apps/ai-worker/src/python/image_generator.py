@@ -1,5 +1,5 @@
 import torch
-from diffusers import AutoPipelineForText2Image
+from diffusers.pipelines.auto_pipeline import AutoPipelineForText2Image
 import sys
 import json
 import os

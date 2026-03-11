@@ -1,6 +1,8 @@
 import torch
-from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
-from diffusers.utils import export_to_video
+from diffusers.models.unets.unet_motion_model import MotionAdapter
+from diffusers.pipelines.animatediff.pipeline_animatediff import AnimateDiffPipeline
+from diffusers.schedulers.scheduling_ddim import DDIMScheduler
+from diffusers.utils.export_utils import export_to_video
 import sys
 import json
 
@@ -55,7 +57,7 @@ class VideoGenerator:
             generator=generator,
         )
         
-        return result.frames[0]
+        return result.frames[0]  # type: ignore[union-attr]
     
     def generate_from_image(self, image_path, prompt, num_frames=16):
         """Generate video starting from an image (I2V)"""
@@ -72,7 +74,7 @@ class VideoGenerator:
             strength=0.8,  # How much to change from original
         )
         
-        return result.frames[0]
+        return result.frames[0]  # type: ignore[union-attr]
 
 def main():
     config = json.loads(sys.stdin.read())
@@ -99,7 +101,7 @@ def main():
     
     # Export to video
     output_path = config['output_path']
-    export_to_video(frames, output_path, fps=8)
+    export_to_video(frames, output_path, fps=8)  # type: ignore[arg-type]
     
     print(json.dumps({
         "success": True,

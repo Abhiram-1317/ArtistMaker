@@ -30,6 +30,7 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  output: "standalone",
   reactStrictMode: true,
   transpilePackages: ["@genesis/ui"],
   compress: true,

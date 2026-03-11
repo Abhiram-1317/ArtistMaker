@@ -1,3 +1,4 @@
+# pyright: basic
 """
 Music generation using Meta's MusicGen (audiocraft).
 Called by Node.js via python-shell — outputs JSON to stdout.
@@ -26,8 +27,8 @@ def main():
 
     try:
         import torch
-        import torchaudio
-        from audiocraft.models import MusicGen
+        import torchaudio  # type: ignore[import-unresolved]
+        from audiocraft.models import MusicGen  # type: ignore[import-unresolved]
 
         model_map = {
             "musicgen-small": "facebook/musicgen-small",
