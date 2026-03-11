@@ -4,16 +4,94 @@
 
 | Option | Credits | GPU | Cost/hr | Hours Available | Setup Difficulty |
 |--------|---------|-----|---------|-----------------|------------------|
-| **Azure for Students** | $100 | T4 16GB | ~$0.53 | ~188 hrs | Easy (recommended) |
+| **Google Cloud** | **$300** | T4 16GB | ~$0.35 | **~857 hrs** | Easy (recommended) |
+| **Azure for Students** | $100 | T4 16GB | ~$0.53 | ~188 hrs | Easy |
 | **DigitalOcean** | $200 | H100/A100 | ~$2-3 | ~70-100 hrs | Needs access request |
 | **HuggingFace API** | Free | N/A | $0 | Unlimited | Already working |
 
-> **Recommendation**: Use **Azure for Students** for real GPU inference (AnimateDiff, SVD video).
+> **Recommendation**: Use **Google Cloud** — most credits ($300), cheapest GPU ($0.35/hr), ~857 hours.
 > The HF API fallback already works for images + Ken Burns video on your laptop.
 
 ---
 
-# Option A: Azure for Students (Recommended)
+# Option A: Google Cloud (Recommended — $300 Free Credits)
+
+## Prerequisites
+
+- Google Cloud account with **$300 free trial** (90 days, no student pack needed)
+- Sign up at [cloud.google.com/free](https://cloud.google.com/free)
+- Install [gcloud CLI](https://cloud.google.com/sdk/docs/install)
+
+## Step 1: Set up gcloud CLI
+
+```bash
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+```
+
+## Step 2: Request GPU quota (one-time, ~5 min approval)
+
+1. Go to [IAM Quotas page](https://console.cloud.google.com/iam-admin/quotas)
+2. Filter: **"NVIDIA T4"** + region **"us-central1"**
+3. Select it → **Edit Quotas** → Request limit **1**
+4. Usually approved within minutes
+
+## Step 3: Create the GPU VM (one command)
+
+```bash
+bash scripts/create-gcp-vm.sh
+```
+
+Creates **n1-standard-4 + T4 16GB GPU** for ~$0.35/hr. $300 = **~857 hours**.
+
+## Step 4: SSH in and deploy
+
+```bash
+gcloud compute ssh genesis-gpu --zone=us-central1-a
+curl -sSL https://raw.githubusercontent.com/Abhiram-1317/ArtistMaker/main/apps/ai-worker/scripts/setup-gcp.sh | bash
+```
+
+## Step 5: Add your HF token
+
+```bash
+cd ~/genesis-ai-worker/apps/ai-worker
+nano .env
+# Add: HF_TOKEN=hf_your_token_here
+docker compose restart ai-worker
+```
+
+## Step 6: Verify
+
+```bash
+curl http://localhost:3002/health
+nvidia-smi
+```
+
+## Step 7: Connect your web app
+
+```env
+# In apps/api/.env on your laptop:
+AI_WORKER_URL=http://YOUR_VM_IP:3002
+```
+
+## Save Credits!
+
+```bash
+# STOP the VM when not using (saves money, keeps disk):
+gcloud compute instances stop genesis-gpu --zone=us-central1-a
+
+# START it again later:
+gcloud compute instances start genesis-gpu --zone=us-central1-a
+
+# DELETE everything when done:
+gcloud compute instances delete genesis-gpu --zone=us-central1-a --quiet
+```
+
+> $300 at $0.35/hr = **~857 hours** of GPU time. Always stop when not in use!
+
+---
+
+# Option B: Azure for Students
 
 ## Prerequisites
 
@@ -77,7 +155,7 @@ az group delete -n genesis-ai-rg --yes
 
 ---
 
-# Option B: DigitalOcean GPU Droplet
+# Option C: DigitalOcean GPU Droplet
 
 ## Prerequisites
 
@@ -214,7 +292,7 @@ DigitalOcean GPU Droplet
 
 ---
 
-# Option C: HuggingFace API (Free, Already Working)
+# Option D: HuggingFace API (Free, Already Working)
 
 No credits needed. Already set up and tested on your laptop.
 
@@ -255,7 +333,7 @@ npx tsx src/test.ts --i2v output/images/your_image.png
                      │  (optional: point to cloud GPU)
                      ▼
 ┌─────────────────────────────────────────────────────────┐
-│  Azure VM / DigitalOcean Droplet (GPU)                  │
+│  Google Cloud / Azure / DigitalOcean (GPU)               │
 │  ├── Docker                                             │
 │  │   ├── ai-worker + CUDA + Python                      │
 │  │   └── Redis (job queue)                              │
