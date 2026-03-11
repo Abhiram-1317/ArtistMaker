@@ -51,3 +51,14 @@ Desktop.ini
 # Misc
 *.pem
 *.log
+
+# Redis dump
+dump.rdb
+
+# Test artifacts
+test_img.png
+
+# AI Worker output
+apps/ai-worker/output/
+apps/ai-worker/models/
+apps/ai-worker/.venv/
