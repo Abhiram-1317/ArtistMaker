@@ -31,19 +31,23 @@ def main():
 
     print()
 
-    # 1. Stable Diffusion XL (image generation)
-    print("[1/4] Downloading Stable Diffusion XL...")
+    use_cuda = torch.cuda.is_available()
+    dtype = torch.float16 if use_cuda else torch.float32
+
+    # 1. SD-Turbo (fast image generation, ~2.5GB fp16)
+    print("[1/4] Downloading SD-Turbo (~2.5GB)...")
     try:
-        from diffusers import StableDiffusionXLPipeline
-        pipe = StableDiffusionXLPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            torch_dtype=torch.float16,
+        from diffusers import AutoPipelineForText2Image
+
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            "stabilityai/sd-turbo",
+            torch_dtype=dtype,
             variant="fp16",
-            use_auth_token=hf_token,
-            cache_dir=os.path.join(models_dir, "sdxl"),
+            use_safetensors=True,
+            cache_dir=os.path.join(models_dir, "sd-turbo"),
         )
         del pipe
-        print("  ✓ Stable Diffusion XL downloaded")
+        print("  ✓ SD-Turbo downloaded")
     except Exception as e:
         print(f"  ✗ Failed: {e}")
 

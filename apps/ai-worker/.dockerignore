@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.venv/
+models/
+output/
+.turbo/
+.env
+.env.local
+*.md
+test_gen.py
+dump.rdb

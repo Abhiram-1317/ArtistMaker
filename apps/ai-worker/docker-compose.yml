@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Project Genesis — AI Worker + Redis (DigitalOcean GPU Droplet)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  ai-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - WORKER_PORT=3002
+      - WORKER_HOST=0.0.0.0
+      - REDIS_URL=redis://redis:6379
+      - MODELS_DIR=/app/models
+      - OUTPUT_DIR=/app/output
+      - PYTHON_PATH=python
+      - CUDA_VISIBLE_DEVICES=0
+      - WORKER_CONCURRENCY=1
+      - HF_TOKEN=${HF_TOKEN:-}
+      - API_URL=${API_URL:-http://host.docker.internal:3001}
+    volumes:
+      - models-data:/app/models
+      - output-data:/app/output
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  models-data:
+  output-data:

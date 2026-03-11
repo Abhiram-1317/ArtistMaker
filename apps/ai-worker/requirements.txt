@@ -1,0 +1,16 @@
+# PyTorch with CUDA 12.1
+--index-url https://download.pytorch.org/whl/cu121
+torch==2.4.1
+torchvision==0.19.1
+
+# Diffusion models
+diffusers>=0.30.0
+transformers>=4.40.0
+accelerate>=0.30.0
+safetensors>=0.4.0
+
+# HuggingFace Hub (model downloads)
+huggingface-hub>=0.23.0
+
+# Image processing
+Pillow>=10.0.0
