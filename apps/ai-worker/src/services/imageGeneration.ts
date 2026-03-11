@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Image generation service — TypeScript wrapper around Python SDXL pipeline
+// Image generation service — Uses HuggingFace API (FLUX.1-schnell)
+// Falls back to local Python pipeline if HF_TOKEN is not available
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { PythonShell } from "python-shell";
+import { execFile } from "child_process";
 import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
@@ -19,12 +20,15 @@ export interface ImageGenerationConfig {
 
 export class ImageGenerationService {
   private pythonScriptPath: string;
+  private pythonPath: string;
 
   constructor() {
+    // Use HuggingFace API-based generator (no local GPU needed)
     this.pythonScriptPath = path.join(
       __dirname,
-      "../python/image_generator.py"
+      "../python/hf_image_generator.py"
     );
+    this.pythonPath = process.env.PYTHON_PATH || "python";
   }
 
   async generate(config: ImageGenerationConfig): Promise<string> {
@@ -34,7 +38,7 @@ export class ImageGenerationService {
     const id = crypto.randomBytes(6).toString("hex");
     const outputPath = path.join(outputDir, `${Date.now()}_${id}.png`);
 
-    const pythonConfig = {
+    const pythonConfig = JSON.stringify({
       prompt: config.prompt,
       negative_prompt:
         config.negativePrompt ||
@@ -45,39 +49,42 @@ export class ImageGenerationService {
       guidance_scale: config.guidanceScale ?? 0.0,
       seed: config.seed ?? -1,
       output_path: outputPath,
-    };
+    });
 
     return new Promise((resolve, reject) => {
-      const pyshell = new PythonShell(this.pythonScriptPath, {
-        mode: "json" as const,
-        pythonPath: process.env.PYTHON_PATH || "python",
-        pythonOptions: ["-u"],
-      });
-
-      // Send config to Python script via stdin
-      pyshell.send(JSON.stringify(pythonConfig));
-      pyshell.end((err) => {
-        if (err && !err.message.includes("close")) {
-          // Only reject on real send errors, not on expected close
-        }
-      });
-
-      pyshell.on(
-        "message",
-        (message: { success: boolean; output_path: string; error?: string }) => {
-          if (message.success) {
-            resolve(message.output_path);
-          } else {
-            reject(new Error(message.error || "Image generation failed"));
+      const child = execFile(
+        this.pythonPath,
+        ["-u", this.pythonScriptPath],
+        { timeout: 120000, env: process.env },
+        (error, stdout, stderr) => {
+          if (stderr) {
+            console.log(`[image-gen] stderr: ${stderr.trim()}`);
+          }
+          if (error) {
+            return reject(new Error(`Image generation failed: ${error.message}`));
+          }
+          try {
+            // Find the JSON line in stdout
+            const lines = stdout.trim().split("\n");
+            const jsonLine = lines.find(l => l.startsWith("{"));
+            if (!jsonLine) {
+              return reject(new Error("No JSON output from image generator"));
+            }
+            const result = JSON.parse(jsonLine);
+            if (result.success) {
+              resolve(result.output_path);
+            } else {
+              reject(new Error(result.error || "Image generation failed"));
+            }
+          } catch (parseErr) {
+            reject(new Error(`Failed to parse image gen output: ${stdout}`));
           }
         }
       );
 
-      pyshell.on("error", reject);
-
-      pyshell.on("pythonError", (err) => {
-        reject(new Error(`Python error: ${err.message}`));
-      });
+      // Send config via stdin
+      child.stdin?.write(pythonConfig + "\n");
+      child.stdin?.end();
     });
   }
 

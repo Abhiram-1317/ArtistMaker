@@ -72,7 +72,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   // ── Job queue worker ──────────────────────────────────────────────────────
 
   attachQueueEvents(renderQueue);
-  startRenderWorker();
+  // Old render worker disabled — movie generation handled by ai-worker service
+  // startRenderWorker();
 
   // ── Global error handler ─────────────────────────────────────────────────
 

@@ -68,7 +68,8 @@ export async function renderRoutes(fastify: FastifyInstance): Promise<void> {
       data: { status: ProjectStatus.RENDERING },
     });
 
-    // Add job to the render queue
+    // Add job to the render queue — include full project snapshot
+    // so the AI worker can process without DB access
     const jobData: GenerateMovieJobData = {
       type: "generate-movie",
       projectId,
@@ -78,6 +79,38 @@ export async function renderRoutes(fastify: FastifyInstance): Promise<void> {
         resolution: { width: 1920, height: 1080 },
         fps: project.fps,
         includeAudio: true,
+      },
+      project: {
+        stylePreset: project.stylePreset,
+        resolution: project.resolution,
+        characters: project.characters.map((c) => ({
+          id: c.id,
+          name: c.name,
+          description: c.description,
+          voiceProfile: c.voiceProfile,
+        })),
+        scenes: project.scenes.map((s) => ({
+          id: s.id,
+          sceneNumber: s.sceneNumber,
+          locationDescription: s.locationDescription,
+          timeOfDay: s.timeOfDay,
+          weather: s.weather,
+          mood: s.mood,
+          durationSeconds: s.durationSeconds,
+          dialogue: s.dialogue,
+          description: s.actionDescription,
+          shots: s.shots.map((sh) => ({
+            id: sh.id,
+            shotNumber: sh.shotNumber,
+            shotType: sh.shotType,
+            cameraAngle: sh.cameraAngle,
+            durationSeconds: sh.durationSeconds,
+            description: sh.description,
+            negativePrompt: sh.negativePrompt,
+            charactersInShot: sh.charactersInShot,
+            sceneId: sh.sceneId,
+          })),
+        })),
       },
     };
 

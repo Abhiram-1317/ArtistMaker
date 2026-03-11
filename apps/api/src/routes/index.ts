@@ -21,10 +21,14 @@ import { collaborationRoutes } from "./collaboration.js";
 import { templateRoutes } from "./templates.js";
 import { analyticsRoutes } from "./analytics.js";
 import { renderRoutes } from "./render.js";
+import { authRoutes } from "./auth.js";
 
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // System routes (health check, ping)
   await fastify.register(healthRoutes);
+
+  // Auth routes (register + login → JWT)
+  await fastify.register(authRoutes, { prefix: "/api/auth" });
 
   // Project CRUD routes
   await fastify.register(projectRoutes, { prefix: "/api/projects" });

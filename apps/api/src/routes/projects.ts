@@ -6,6 +6,8 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import { Genre, ProjectStatus } from "@genesis/database";
 import type { Prisma } from "@prisma/client";
+import { addRenderJob, renderQueue } from "../queues/renderQueue.js";
+import type { GenerateMovieJobData } from "../queues/renderQueue.js";
 
 // ── Zod schemas ──────────────────────────────────────────────────────────────
 
@@ -473,6 +475,235 @@ export async function projectRoutes(fastify: FastifyInstance): Promise<void> {
       });
 
       return reply.status(204).send();
+    },
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // POST /:id/generate — queue full movie generation
+  // ────────────────────────────────────────────────────────────────────────
+
+  fastify.post<{ Params: { id: string } }>("/:id/generate", {
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const params = idParamSchema.safeParse(request.params);
+      if (!params.success) return zodError(reply, params.error);
+
+      const { id } = params.data;
+      const userId = request.user.id;
+      const userTier = request.user.tier;
+
+      // Fetch project with all related data the worker needs
+      const project = await fastify.prisma.project.findUnique({
+        where: { id },
+        include: {
+          characters: true,
+          scenes: {
+            orderBy: { sceneNumber: "asc" },
+            include: {
+              shots: { orderBy: { shotNumber: "asc" } },
+            },
+          },
+        },
+      });
+
+      if (!project) {
+        return reply.status(404).send({ error: "Project not found" });
+      }
+
+      if (project.userId !== userId) {
+        return reply.status(403).send({ error: "Not authorized" });
+      }
+
+      if (project.status === ProjectStatus.RENDERING) {
+        return reply.status(409).send({ error: "Movie generation already in progress" });
+      }
+
+      // Validate minimum requirements
+      if (project.characters.length === 0) {
+        return reply.status(400).send({ error: "Project must have at least one character" });
+      }
+
+      // Auto-create a default scene + shot if none exist (for quick generation)
+      if (project.scenes.length === 0) {
+        const scene = await fastify.prisma.scene.create({
+          data: {
+            projectId: id,
+            sceneNumber: 1,
+            title: project.title,
+            locationDescription: project.description || "A cinematic scene",
+            actionDescription: project.description || project.title,
+          },
+        });
+        await fastify.prisma.shot.create({
+          data: {
+            sceneId: scene.id,
+            shotNumber: 1,
+            durationSeconds: 5,
+            description: project.description || project.title,
+            visualPrompt: project.description || project.title,
+            charactersInShot: project.characters.map((c) => c.name),
+          },
+        });
+        // Re-fetch with the new scene + shot
+        const updated = await fastify.prisma.project.findUnique({
+          where: { id },
+          include: {
+            characters: true,
+            scenes: {
+              orderBy: { sceneNumber: "asc" },
+              include: { shots: { orderBy: { shotNumber: "asc" } } },
+            },
+          },
+        });
+        if (updated) {
+          Object.assign(project, updated);
+        }
+      }
+
+      const totalShots = project.scenes.reduce(
+        (sum, s) => sum + s.shots.length,
+        0,
+      );
+
+      if (totalShots === 0) {
+        return reply.status(400).send({ error: "Project must have at least one shot" });
+      }
+
+      // Check credits
+      const estimatedCost = totalShots * 10;
+      const user = await fastify.prisma.user.findUnique({
+        where: { id: userId },
+        select: { creditsBalance: true },
+      });
+
+      if (user && user.creditsBalance < estimatedCost) {
+        return reply.status(402).send({
+          error: "Insufficient credits",
+          required: estimatedCost,
+          current: user.creditsBalance,
+        });
+      }
+
+      // Update project status
+      await fastify.prisma.project.update({
+        where: { id },
+        data: { status: ProjectStatus.RENDERING },
+      });
+
+      // Build job data with full project snapshot
+      const jobData: GenerateMovieJobData = {
+        type: "generate-movie",
+        projectId: id,
+        userId,
+        config: {
+          quality: "standard",
+          resolution: { width: 1920, height: 1080 },
+          fps: project.fps,
+          includeAudio: true,
+        },
+        project: {
+          stylePreset: project.stylePreset,
+          resolution: project.resolution,
+          characters: project.characters.map((c) => ({
+            id: c.id,
+            name: c.name,
+            description: c.description,
+            voiceProfile: c.voiceProfile,
+          })),
+          scenes: project.scenes.map((s) => ({
+            id: s.id,
+            sceneNumber: s.sceneNumber,
+            locationDescription: s.locationDescription,
+            timeOfDay: s.timeOfDay,
+            weather: s.weather,
+            mood: s.mood,
+            durationSeconds: s.durationSeconds,
+            dialogue: s.dialogue,
+            description: s.actionDescription,
+            shots: s.shots.map((sh) => ({
+              id: sh.id,
+              shotNumber: sh.shotNumber,
+              shotType: sh.shotType,
+              cameraAngle: sh.cameraAngle,
+              durationSeconds: sh.durationSeconds,
+              description: sh.description,
+              negativePrompt: sh.negativePrompt,
+              charactersInShot: sh.charactersInShot,
+              sceneId: sh.sceneId,
+            })),
+          })),
+        },
+      };
+
+      const job = await addRenderJob(jobData, userTier);
+
+      const minutesPerShot = 2;
+      const totalMinutes = totalShots * minutesPerShot;
+      const estimatedTime =
+        totalMinutes < 60
+          ? `${totalMinutes} minutes`
+          : `${Math.round(totalMinutes / 60)} hours`;
+
+      return reply.status(202).send({
+        success: true,
+        jobId: job.id,
+        status: "queued",
+        message: "Movie generation started",
+        estimatedTime,
+        totalShots,
+        estimatedCost,
+      });
+    },
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // GET /:id/render-status — get render status for a project
+  // ────────────────────────────────────────────────────────────────────────
+
+  fastify.get<{ Params: { id: string } }>("/:id/render-status", {
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      const params = idParamSchema.safeParse(request.params);
+      if (!params.success) return zodError(reply, params.error);
+
+      const { id } = params.data;
+      const userId = request.user.id;
+
+      // Verify ownership
+      const project = await fastify.prisma.project.findUnique({
+        where: { id },
+        select: { userId: true, status: true },
+      });
+
+      if (!project || project.userId !== userId) {
+        return reply.status(404).send({ error: "Project not found" });
+      }
+
+      // Find most recent job for this project across all states
+      const allJobs = await renderQueue.getJobs([
+        "waiting",
+        "active",
+        "completed",
+        "failed",
+        "delayed",
+      ]);
+      const projectJobs = allJobs
+        .filter((j) => j.data.projectId === id)
+        .sort((a, b) => b.timestamp - a.timestamp);
+
+      if (projectJobs.length === 0) {
+        return reply.send({ status: "not_started", progress: 0 });
+      }
+
+      const latest = projectJobs[0];
+      const state = await latest.getState();
+
+      return reply.send({
+        jobId: latest.id,
+        status: state,
+        progress: latest.progress() || 0,
+        result: state === "completed" ? latest.returnvalue : undefined,
+        error: state === "failed" ? latest.failedReason : undefined,
+        createdAt: latest.timestamp,
+      });
     },
   });
 }

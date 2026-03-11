@@ -112,12 +112,17 @@ export class AIOrchestrator {
       referenceImages.push(image);
     }
 
-    // Create voice profile
-    const voiceProfilePath =
-      await this.characterVoiceService.createCharacterVoice(
-        config.id,
-        config.voiceDescription,
-      );
+    // Create voice profile (optional - may not be available)
+    let voiceProfilePath: string | undefined;
+    try {
+      voiceProfilePath =
+        await this.characterVoiceService.createCharacterVoice(
+          config.id,
+          config.voiceDescription,
+        );
+    } catch (err) {
+      console.warn(`[orchestrator] Voice generation skipped for ${config.name}: ${err instanceof Error ? err.message : err}`);
+    }
 
     return {
       id: config.id,
@@ -151,25 +156,41 @@ export class AIOrchestrator {
       guidanceScale: 7.5,
     });
 
-    // Step 2: Convert image to video
-    const video = await this.videoService.generate({
-      prompt: keyframePrompt,
-      initImage: keyframe,
-      numFrames: Math.ceil(shotConfig.durationSeconds * 8), // 8fps base
-    });
+    // Step 2: Convert image to video (optional - falls back to static keyframe)
+    let video: string;
+    try {
+      video = await this.videoService.generate({
+        prompt: keyframePrompt,
+        initImage: keyframe,
+        numFrames: Math.ceil(shotConfig.durationSeconds * 8), // 8fps base
+      });
+    } catch (err) {
+      console.warn(`[orchestrator] Video generation failed, using keyframe as static: ${err instanceof Error ? err.message : err}`);
+      video = keyframe;
+    }
 
-    // Step 3: Interpolate to 24fps using RIFE / optical-flow
-    const interpolated = await this.enhancementService.interpolateFrames(
-      video,
-      24,
-    );
+    // Step 3: Interpolate to 24fps using RIFE / optical-flow (optional)
+    let interpolated: string;
+    try {
+      interpolated = await this.enhancementService.interpolateFrames(
+        video,
+        24,
+      );
+    } catch (err) {
+      console.warn(`[orchestrator] Frame interpolation skipped: ${err instanceof Error ? err.message : err}`);
+      interpolated = video;
+    }
 
-    // Step 4: Upscale if needed using Real-ESRGAN
+    // Step 4: Upscale if needed using Real-ESRGAN (optional)
     let final = interpolated;
-    if (shotConfig.resolution === "1080p") {
-      final = await this.enhancementService.upscale(interpolated, 1920, 1080);
-    } else if (shotConfig.resolution === "4k") {
-      final = await this.enhancementService.upscale(interpolated, 3840, 2160);
+    try {
+      if (shotConfig.resolution === "1080p") {
+        final = await this.enhancementService.upscale(interpolated, 1920, 1080);
+      } else if (shotConfig.resolution === "4k") {
+        final = await this.enhancementService.upscale(interpolated, 3840, 2160);
+      }
+    } catch (err) {
+      console.warn(`[orchestrator] Upscaling skipped: ${err instanceof Error ? err.message : err}`);
     }
 
     return {
@@ -191,7 +212,7 @@ export class AIOrchestrator {
 
     const audioTracks: AudioTrackOutput[] = [];
 
-    // 1. Generate dialogue
+    // 1. Generate dialogue (optional - requires TTS)
     if (scene.dialogue && Array.isArray(scene.dialogue) && scene.dialogue.length > 0) {
       let currentTime = 0;
 
@@ -199,47 +220,59 @@ export class AIOrchestrator {
         const character = characters.find((c) => c.id === line.characterId);
         if (!character) continue;
 
-        const audio = await this.characterVoiceService.speakLine(
-          character.id,
-          line.text,
-          line.emotion,
-        );
+        try {
+          const audio = await this.characterVoiceService.speakLine(
+            character.id,
+            line.text,
+            line.emotion,
+          );
 
-        const duration = await this.estimateAudioDuration(audio);
+          const duration = await this.estimateAudioDuration(audio);
 
-        audioTracks.push({
-          type: "dialogue",
-          path: audio,
-          startTime: currentTime,
-          duration,
-          volume: 1.0,
-          characterId: character.id,
-        });
+          audioTracks.push({
+            type: "dialogue",
+            path: audio,
+            startTime: currentTime,
+            duration,
+            volume: 1.0,
+            characterId: character.id,
+          });
 
-        currentTime += duration + 0.5; // Pause between lines
+          currentTime += duration + 0.5; // Pause between lines
+        } catch (err) {
+          console.warn(`[orchestrator] Dialogue generation skipped for line: ${err instanceof Error ? err.message : err}`);
+        }
       }
     }
 
-    // 2. Generate background music
-    const music = await this.musicService.generateSceneMusic(scene);
-    audioTracks.push({
-      type: "music",
-      path: music,
-      startTime: 0,
-      duration: scene.durationSeconds || 30,
-      volume: 0.3,
-    });
-
-    // 3. Generate sound effects
-    const sfxPaths = await this.sfxService.generateSceneSFX(scene);
-    for (let i = 0; i < sfxPaths.length; i++) {
+    // 2. Generate background music (optional)
+    try {
+      const music = await this.musicService.generateSceneMusic(scene);
       audioTracks.push({
-        type: "sfx",
-        path: sfxPaths[i],
-        startTime: i * 2, // Stagger SFX by 2 seconds
-        duration: 3,
-        volume: 0.6,
+        type: "music",
+        path: music,
+        startTime: 0,
+        duration: scene.durationSeconds || 30,
+        volume: 0.3,
       });
+    } catch (err) {
+      console.warn(`[orchestrator] Music generation skipped: ${err instanceof Error ? err.message : err}`);
+    }
+
+    // 3. Generate sound effects (optional)
+    try {
+      const sfxPaths = await this.sfxService.generateSceneSFX(scene);
+      for (let i = 0; i < sfxPaths.length; i++) {
+        audioTracks.push({
+          type: "sfx",
+          path: sfxPaths[i],
+          startTime: i * 2, // Stagger SFX by 2 seconds
+          duration: 3,
+          volume: 0.6,
+        });
+      }
+    } catch (err) {
+      console.warn(`[orchestrator] SFX generation skipped: ${err instanceof Error ? err.message : err}`);
     }
 
     return audioTracks;

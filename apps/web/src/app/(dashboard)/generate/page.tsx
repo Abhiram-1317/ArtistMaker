@@ -8,11 +8,15 @@ import Image from "next/image";
 
 interface GeneratedItem {
   id: string;
-  type: "image" | "video";
+  type: "image" | "video" | "movie";
   url: string;
   prompt: string;
   createdAt: Date;
   isKeyframeOnly?: boolean;
+  projectId?: string;
+  jobId?: string;
+  jobStatus?: string;
+  progress?: number;
 }
 
 /* ── Tab Button ──────────────────────────────────────────────────────────── */
@@ -50,57 +54,139 @@ function TabButton({
 /* ── Main Page ───────────────────────────────────────────────────────────── */
 
 export default function GeneratePage() {
-  const [mode, setMode] = useState<"image" | "video">("image");
+  const [mode, setMode] = useState<"image" | "video" | "movie">("image");
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [gallery, setGallery] = useState<GeneratedItem[]>([]);
   const [progress, setProgress] = useState("");
   const abortRef = useRef<AbortController | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Clean up polling on unmount
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const pollMovieStatus = (projectId: string, itemId: string) => {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/generate/movie?projectId=${projectId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        setGallery((prev) =>
+          prev.map((item) =>
+            item.id === itemId
+              ? {
+                  ...item,
+                  jobStatus: data.status,
+                  progress: data.progress ?? 0,
+                  url: data.result?.finalVideoPath || item.url,
+                }
+              : item,
+          ),
+        );
+
+        if (data.status === "completed" || data.status === "failed") {
+          stopPolling();
+        }
+      } catch {
+        // ignore poll errors
+      }
+    }, 3000);
+  };
 
   const handleGenerate = async () => {
     if (!prompt.trim() || loading) return;
 
     setLoading(true);
     setError("");
-    setProgress(
-      mode === "image"
-        ? "Generating image with FLUX.1-schnell..."
-        : "Generating video (image + Ken Burns motion)...",
-    );
+    stopPolling();
+
+    const modeLabels = {
+      image: "Generating image with FLUX.1-schnell...",
+      video: "Generating video (image + Ken Burns motion)...",
+      movie: "Queuing full AI movie generation...",
+    };
+    setProgress(modeLabels[mode]);
 
     try {
       abortRef.current = new AbortController();
-      const endpoint = mode === "image" ? "/api/generate/image" : "/api/generate/video";
-      const body =
-        mode === "image"
-          ? { prompt: prompt.trim(), width: 1024, height: 1024 }
-          : { prompt: prompt.trim(), numFrames: 24, fps: 8 };
 
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: abortRef.current.signal,
-      });
+      if (mode === "movie") {
+        // Full AI pipeline via API → Bull queue → AI Worker
+        const res = await fetch("/api/generate/movie", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: prompt.trim(), style: "cinematic" }),
+          signal: abortRef.current.signal,
+        });
 
-      const data = await res.json();
+        const data = await res.json();
 
-      if (!res.ok) {
-        setError(data.error || "Generation failed");
-        return;
+        if (!res.ok) {
+          setError(data.error || "Movie generation failed");
+          return;
+        }
+
+        const itemId = `gen-${Date.now()}`;
+        const newItem: GeneratedItem = {
+          id: itemId,
+          type: "movie",
+          url: "",
+          prompt: prompt.trim(),
+          createdAt: new Date(),
+          projectId: data.projectId,
+          jobId: data.jobId,
+          jobStatus: "queued",
+          progress: 0,
+        };
+
+        setGallery((prev) => [newItem, ...prev]);
+        setProgress(`Movie queued! Estimated: ${data.estimatedTime}`);
+
+        // Start polling for status
+        pollMovieStatus(data.projectId, itemId);
+      } else {
+        // Direct HuggingFace generation (image or Ken Burns video)
+        const endpoint =
+          mode === "image" ? "/api/generate/image" : "/api/generate/video";
+        const body =
+          mode === "image"
+            ? { prompt: prompt.trim(), width: 1024, height: 1024 }
+            : { prompt: prompt.trim(), numFrames: 24, fps: 8 };
+
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: abortRef.current.signal,
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setError(data.error || "Generation failed");
+          return;
+        }
+
+        const newItem: GeneratedItem = {
+          id: `gen-${Date.now()}`,
+          type: data.isKeyframeOnly ? "image" : mode,
+          url: data.imageUrl || data.videoUrl,
+          prompt: prompt.trim(),
+          createdAt: new Date(),
+          isKeyframeOnly: data.isKeyframeOnly,
+        };
+
+        setGallery((prev) => [newItem, ...prev]);
       }
 
-      const newItem: GeneratedItem = {
-        id: `gen-${Date.now()}`,
-        type: data.isKeyframeOnly ? "image" : mode,
-        url: data.imageUrl || data.videoUrl,
-        prompt: prompt.trim(),
-        createdAt: new Date(),
-        isKeyframeOnly: data.isKeyframeOnly,
-      };
-
-      setGallery((prev) => [newItem, ...prev]);
       setProgress("");
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "AbortError") return;
@@ -135,6 +221,9 @@ export default function GeneratePage() {
         <TabButton active={mode === "video"} onClick={() => setMode("video")}>
           🎬 Video
         </TabButton>
+        <TabButton active={mode === "movie"} onClick={() => setMode("movie")}>
+          🎥 Movie
+        </TabButton>
       </div>
 
       {/* ── Prompt Input ───────────────────────────────────────────────── */}
@@ -143,7 +232,11 @@ export default function GeneratePage() {
         className="mb-8 p-6 bg-surface-raised rounded-2xl border border-surface-border"
       >
         <label className="block text-sm font-medium text-gray-300 mb-3">
-          {mode === "image" ? "Describe the image you want" : "Describe the video scene"}
+          {mode === "image"
+            ? "Describe the image you want"
+            : mode === "video"
+              ? "Describe the video scene"
+              : "Describe your movie scene (uses full AI pipeline)"}
         </label>
         <textarea
           value={prompt}
@@ -151,7 +244,9 @@ export default function GeneratePage() {
           placeholder={
             mode === "image"
               ? "A futuristic city skyline at sunset, neon lights reflecting on wet streets, cinematic 4K..."
-              : "A slow camera pan across a misty forest at dawn, golden light filtering through ancient trees..."
+              : mode === "video"
+                ? "A slow camera pan across a misty forest at dawn, golden light filtering through ancient trees..."
+                : "A detective walks through a rain-soaked neon city at night, investigating a mysterious disappearance..."
           }
           rows={3}
           className="w-full px-4 py-3 bg-surface border border-surface-border rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-genesis-500 focus:ring-1 focus:ring-genesis-500 resize-none transition-all"
@@ -168,7 +263,9 @@ export default function GeneratePage() {
           <div className="text-xs text-gray-500">
             {mode === "image"
               ? "1024×1024 PNG • ~10s generation time"
-              : "1024×576 MP4 • ~15s generation time"}
+              : mode === "video"
+                ? "1024×576 MP4 • ~15s generation time"
+                : "Full AI pipeline • characters + shots + audio + composition"}
           </div>
 
           <button
@@ -201,10 +298,10 @@ export default function GeneratePage() {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                   />
                 </svg>
-                Generating...
+                {mode === "movie" ? "Queuing..." : "Generating..."}
               </span>
             ) : (
-              `Generate ${mode === "image" ? "Image" : "Video"}`
+              `Generate ${mode === "image" ? "Image" : mode === "video" ? "Video" : "Movie"}`
             )}
           </button>
         </div>
@@ -275,6 +372,45 @@ export default function GeneratePage() {
                         loop
                         className="w-full h-full object-contain"
                       />
+                    ) : item.type === "movie" ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center">
+                        <div className="text-4xl mb-3">
+                          {item.jobStatus === "completed"
+                            ? "✅"
+                            : item.jobStatus === "failed"
+                              ? "❌"
+                              : "🎥"}
+                        </div>
+                        <p className="text-white font-medium mb-1 text-sm">
+                          {item.jobStatus === "completed"
+                            ? "Movie Complete"
+                            : item.jobStatus === "failed"
+                              ? "Generation Failed"
+                              : item.jobStatus === "active"
+                                ? "Generating..."
+                                : "Queued"}
+                        </p>
+                        {item.progress !== undefined &&
+                          item.jobStatus !== "completed" &&
+                          item.jobStatus !== "failed" && (
+                            <div className="w-full max-w-[200px] mt-2">
+                              <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-genesis-500 rounded-full transition-all duration-500"
+                                  style={{ width: `${item.progress}%` }}
+                                />
+                              </div>
+                              <p className="text-xs text-gray-400 mt-1">
+                                {item.progress}%
+                              </p>
+                            </div>
+                          )}
+                        {item.jobId && (
+                          <p className="text-xs text-gray-600 mt-2">
+                            Job: {item.jobId}
+                          </p>
+                        )}
+                      </div>
                     ) : (
                       <Image
                         src={item.url}
@@ -287,7 +423,11 @@ export default function GeneratePage() {
 
                     {/* Type badge */}
                     <div className="absolute top-3 left-3 px-3 py-1 bg-black/70 backdrop-blur-sm rounded-full text-xs font-medium text-white border border-white/10">
-                      {item.type === "video" ? "🎬 Video" : "🖼️ Image"}
+                      {item.type === "movie"
+                        ? "🎥 Movie"
+                        : item.type === "video"
+                          ? "🎬 Video"
+                          : "🖼️ Image"}
                       {item.isKeyframeOnly && " (Keyframe)"}
                     </div>
 

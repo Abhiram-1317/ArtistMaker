@@ -29,6 +29,39 @@ export interface GenerateMovieJobData {
     fps: number;
     includeAudio: boolean;
   };
+  /** Full project snapshot for the AI worker (characters, scenes, shots) */
+  project: {
+    stylePreset?: string | null;
+    resolution?: string;
+    characters: Array<{
+      id: string;
+      name: string;
+      description?: string | null;
+      voiceProfile?: unknown;
+    }>;
+    scenes: Array<{
+      id: string;
+      sceneNumber: number;
+      locationDescription?: string | null;
+      timeOfDay?: string;
+      weather?: string;
+      mood?: string | null;
+      durationSeconds?: number | null;
+      dialogue?: unknown;
+      description?: string | null;
+      shots: Array<{
+        id: string;
+        shotNumber: number;
+        shotType: string;
+        cameraAngle: string;
+        durationSeconds: number;
+        description?: string | null;
+        negativePrompt?: string | null;
+        charactersInShot?: string[];
+        sceneId: string;
+      }>;
+    }>;
+  };
 }
 
 export interface GenerateShotJobData {

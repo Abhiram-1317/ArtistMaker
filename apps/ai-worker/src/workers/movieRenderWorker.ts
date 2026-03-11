@@ -8,6 +8,7 @@ import Bull from "bull";
 import { env } from "../config/env.js";
 import { AIOrchestrator } from "../services/aiOrchestrator.js";
 import type { GeneratedCharacter, AudioTrackOutput } from "../services/aiOrchestrator.js";
+import { VideoCompositionService } from "../services/videoComposition.js";
 import path from "path";
 import fs from "fs/promises";
 
@@ -206,28 +207,38 @@ async function processMovieJob(
     await emitProgress(job, "audio", audioPct, 70 + audioPct * 0.15);
   }
 
-  // ── STEP 4: Final composition placeholder (85% → 100%) ────────────────
+  // ── STEP 4: Final composition via FFmpeg (85% → 100%) ─────────────────
 
   console.log("\n🎞️ Composing final movie…");
   await emitProgress(job, "composition", 0, 85);
 
-  // Write a manifest file for FFmpeg-based composition
   const outputDir = path.join(env.OUTPUT_DIR, projectId);
   await fs.mkdir(outputDir, { recursive: true });
 
+  // Save manifest for debugging / re-composition
   const manifest = {
     projectId,
     shots: generatedShots,
     audioTracks: allAudioTracks,
     generatedAt: new Date().toISOString(),
   };
+  await fs.writeFile(
+    path.join(outputDir, "manifest.json"),
+    JSON.stringify(manifest, null, 2),
+  );
 
-  const manifestPath = path.join(outputDir, "manifest.json");
-  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
-
-  // TODO: invoke VideoCompositionService (FFmpeg concat + audio mix)
-  // For now, the manifest is the deliverable.
-  const finalVideoPath = manifestPath;
+  // Compose final video with FFmpeg
+  let finalVideoPath: string | undefined;
+  try {
+    const compositor = new VideoCompositionService();
+    finalVideoPath = await compositor.composeMovie(
+      generatedShots,
+      allAudioTracks,
+      outputDir,
+    );
+  } catch (compErr) {
+    console.warn(`[worker] FFmpeg composition failed, returning individual assets: ${compErr instanceof Error ? compErr.message : compErr}`);
+  }
 
   await emitProgress(job, "composition", 100, 100);
 
@@ -246,7 +257,7 @@ async function processMovieJob(
 // ── Start worker ─────────────────────────────────────────────────────────────
 
 export function startMovieRenderWorker(): void {
-  movieRenderQueue.process(1, async (job) => {
+  movieRenderQueue.process("generate-movie", 1, async (job) => {
     return await processMovieJob(job);
   });
 
