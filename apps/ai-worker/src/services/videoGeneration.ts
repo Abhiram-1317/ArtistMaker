@@ -1,135 +1,92 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// Video generation service
-// Orchestrates the full pipeline: prompt → image → video → compositing
-// ─────────────────────────────────────────────────────────────────────────────
+import { PythonShell } from 'python-shell'
+import path from 'path'
+import fs from 'fs/promises'
 
-import path from "path";
-import fs from "fs/promises";
-import { generateImage } from "../models/videoModel.js";
-import { generateVideo } from "../models/videoModel.js";
-import { env } from "../config/env.js";
-
-export interface SceneRequest {
-  projectId: string;
-  sceneId: string;
-  sceneNumber: number;
-  prompt: string;
-  negativePrompt?: string;
-  style?: string;
-  durationSec?: number;
-  width?: number;
-  height?: number;
-  seed?: number;
+export interface VideoGenerationConfig {
+  prompt: string
+  negativePrompt?: string
+  initImage?: string  // For I2V
+  numFrames?: number
+  numSteps?: number
+  guidanceScale?: number
+  seed?: number
 }
 
-export interface SceneResult {
-  sceneId: string;
-  success: boolean;
-  keyframePath?: string;
-  videoPath?: string;
-  totalDurationMs: number;
-  error?: string;
-}
-
-async function ensureDir(dir: string): Promise<void> {
-  await fs.mkdir(dir, { recursive: true });
-}
-
-/**
- * Generates a single scene: first creates a keyframe image, then animates it
- * into a short video clip.
- */
-export async function generateScene(req: SceneRequest): Promise<SceneResult> {
-  const start = Date.now();
-  const outDir = path.resolve(
-    env.OUTPUT_DIR,
-    req.projectId,
-    `scene-${req.sceneNumber}`
-  );
-  await ensureDir(outDir);
-
-  const keyframePath = path.join(outDir, "keyframe.png");
-  const videoPath = path.join(outDir, "clip.mp4");
-
-  // Build enriched prompt with style modifier
-  const styledPrompt = req.style
-    ? `${req.prompt}, ${req.style} style, cinematic lighting, high quality`
-    : `${req.prompt}, cinematic lighting, high quality, detailed`;
-
-  // Step 1: Generate keyframe image
-  const imgResult = await generateImage({
-    prompt: styledPrompt,
-    negativePrompt:
-      req.negativePrompt ??
-      "blurry, low quality, distorted, watermark, text, ugly",
-    width: req.width ?? 1024,
-    height: req.height ?? 576,
-    steps: 30,
-    guidanceScale: 7.5,
-    seed: req.seed,
-    outputPath: keyframePath,
-  });
-
-  if (!imgResult.success) {
-    return {
-      sceneId: req.sceneId,
-      success: false,
-      totalDurationMs: Date.now() - start,
-      error: `Image generation failed: ${imgResult.error}`,
-    };
+export class VideoGenerationService {
+  private pythonScriptPath: string
+  
+  constructor() {
+    this.pythonScriptPath = path.join(__dirname, '../python/video_generator.py')
   }
-
-  // Step 2: Animate keyframe into video
-  const vidResult = await generateVideo({
-    input: keyframePath,
-    inputType: "image",
-    width: req.width ?? 1024,
-    height: req.height ?? 576,
-    numFrames: (req.durationSec ?? 3) * 8, // 8 fps default
-    fps: 8,
-    seed: req.seed,
-    outputPath: videoPath,
-  });
-
-  if (!vidResult.success) {
-    return {
-      sceneId: req.sceneId,
-      success: false,
-      keyframePath,
-      totalDurationMs: Date.now() - start,
-      error: `Video generation failed: ${vidResult.error}`,
-    };
-  }
-
-  return {
-    sceneId: req.sceneId,
-    success: true,
-    keyframePath,
-    videoPath,
-    totalDurationMs: Date.now() - start,
-  };
-}
-
-/**
- * Generates all scenes for a project sequentially.
- * In the future this can run scenes in parallel on multi-GPU setups.
- */
-export async function generateAllScenes(
-  scenes: SceneRequest[]
-): Promise<SceneResult[]> {
-  const results: SceneResult[] = [];
-
-  for (const scene of scenes) {
-    const result = await generateScene(scene);
-    results.push(result);
-
-    // If a scene fails, continue with remaining scenes but log the error
-    if (!result.success) {
-      console.error(
-        `Scene ${scene.sceneNumber} failed: ${result.error}`
-      );
+  
+  async generate(config: VideoGenerationConfig): Promise<string> {
+    const outputDir = path.join(__dirname, '../../output/videos')
+    await fs.mkdir(outputDir, { recursive: true })
+    
+    const outputPath = path.join(
+      outputDir, 
+      `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.mp4`
+    )
+    
+    const pythonConfig = {
+      prompt: config.prompt,
+      negative_prompt: config.negativePrompt || '',
+      init_image: config.initImage,
+      num_frames: config.numFrames || 16,
+      num_steps: config.numSteps || 25,
+      guidance_scale: config.guidanceScale || 7.5,
+      seed: config.seed || -1,
+      output_path: outputPath
     }
+    
+    return new Promise((resolve, reject) => {
+      const pyshell = new PythonShell(this.pythonScriptPath, {
+        mode: 'json',
+        pythonPath: process.env.PYTHON_PATH || 'python3',
+        pythonOptions: ['-u'],
+        env: { ...process.env },
+      })
+      
+      pyshell.send(JSON.stringify(pythonConfig))
+      pyshell.end((err) => {
+        if (err && !err.message.includes('close')) {
+          // Only reject on real send errors
+        }
+      })
+      
+      pyshell.on('message', (message: any) => {
+        if (message.success) {
+          resolve(message.output_path)
+        } else {
+          reject(new Error(message.error || 'Video generation failed'))
+        }
+      })
+      
+      pyshell.on('error', reject)
+      pyshell.on('pythonError', (err) => {
+        reject(new Error(`Python error: ${err.message}`))
+      })
+    })
   }
-
-  return results;
+  
+  async generateShot(shotConfig: any): Promise<string> {
+    // Step 1: Generate initial image with SDXL
+    const { ImageGenerationService } = await import('./imageGeneration.js')
+    const imageService = new ImageGenerationService()
+    
+    const initImage = await imageService.generate({
+      prompt: shotConfig.visualPrompt,
+      width: 512,
+      height: 512,
+    })
+    
+    // Step 2: Animate the image
+    const video = await this.generate({
+      prompt: shotConfig.visualPrompt,
+      initImage: initImage,
+      numFrames: Math.ceil(shotConfig.durationSeconds * 8), // 8fps
+    })
+    
+    return video
+  }
 }

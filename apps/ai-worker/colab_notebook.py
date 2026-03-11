@@ -91,12 +91,11 @@ Video("/content/output/animatediff_video.mp4", embed=True)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 config = json.dumps({
-    "image_path": "/content/output/keyframe.png",
+    "init_image": "/content/output/keyframe.png",
     "num_frames": 25,
-    "fps": 7,
+    "fps": 6,
     "motion_bucket_id": 127,
     "noise_aug_strength": 0.02,
-    "seed": 42,
     "output_path": "/content/output/svd_video.mp4"
 })
 
