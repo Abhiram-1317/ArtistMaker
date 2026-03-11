@@ -28,10 +28,8 @@ async function test() {
     imagePath = await service.generate({
       prompt,
       negativePrompt: "blurry, low quality",
-      width: 512,
-      height: 512,
-      numSteps: 4,
-      guidanceScale: 0.0,
+      width: 1024,
+      height: 1024,
     });
   } else {
     const { ImageGenerationService } = await import("./services/imageGeneration.js");

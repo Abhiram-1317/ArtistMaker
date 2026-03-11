@@ -1,10 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Image generation service — HuggingFace Inference API (no GPU required!)
-// Uses HF's free API to generate images on their servers
+// Uses HF's free API with FLUX.1-schnell for 1024x1024 high-quality images
 // ─────────────────────────────────────────────────────────────────────────────
 
-import fs from "fs/promises";
+import { PythonShell } from "python-shell";
 import path from "path";
+import fs from "fs/promises";
 import crypto from "crypto";
 
 export interface ImageGenerationConfig {
@@ -18,22 +19,13 @@ export interface ImageGenerationConfig {
 }
 
 export class HFImageGenerationService {
-  private apiUrl: string;
-  private headers: Record<string, string>;
+  private pythonScriptPath: string;
 
   constructor() {
-    const token = process.env.HF_TOKEN;
-    if (!token) {
-      console.warn(
-        "No HF_TOKEN set. Get a free token at https://huggingface.co/settings/tokens"
-      );
-    }
-    this.apiUrl =
-      "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell";
-    this.headers = {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
+    this.pythonScriptPath = path.join(
+      __dirname,
+      "../python/hf_image_generator.py"
+    );
   }
 
   async generate(config: ImageGenerationConfig): Promise<string> {
@@ -43,49 +35,44 @@ export class HFImageGenerationService {
     const id = crypto.randomBytes(6).toString("hex");
     const outputPath = path.join(outputDir, `${Date.now()}_${id}.png`);
 
-    const payload = {
-      inputs: config.prompt,
-      parameters: {
-        negative_prompt:
-          config.negativePrompt ||
-          "blurry, low quality, distorted, deformed, ugly",
-        width: config.width || 1024,
-        height: config.height || 1024,
-        ...(config.seed !== undefined && config.seed !== -1
-          ? { seed: config.seed }
-          : {}),
-      },
+    const pythonConfig = {
+      prompt: config.prompt,
+      width: config.width || 1024,
+      height: config.height || 1024,
+      output_path: outputPath,
     };
 
-    // Call HuggingFace Inference API
-    const response = await fetch(this.apiUrl, {
-      method: "POST",
-      headers: this.headers,
-      body: JSON.stringify(payload),
+    return new Promise((resolve, reject) => {
+      const pyshell = new PythonShell(this.pythonScriptPath, {
+        mode: "json" as const,
+        pythonPath: process.env.PYTHON_PATH || "python",
+        pythonOptions: ["-u"],
+        env: { ...process.env },
+      });
+
+      pyshell.send(pythonConfig as any);
+      pyshell.end((err) => {
+        if (err && !err.message.includes("close")) {
+          // Only reject on real send errors
+        }
+      });
+
+      pyshell.on(
+        "message",
+        (message: { success: boolean; output_path: string; error?: string }) => {
+          if (message.success) {
+            resolve(message.output_path);
+          } else {
+            reject(new Error(message.error || "Image generation failed"));
+          }
+        }
+      );
+
+      pyshell.on("error", reject);
+      pyshell.on("pythonError", (err) => {
+        reject(new Error(`Python error: ${err.message}`));
+      });
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-
-      // Model is loading — wait and retry
-      if (response.status === 503) {
-        const data = JSON.parse(errorText);
-        const waitTime = Math.min((data.estimated_time || 20) * 1000, 120000);
-        console.log(
-          `Model is loading, waiting ${(waitTime / 1000).toFixed(0)}s...`
-        );
-        await new Promise((resolve) => setTimeout(resolve, waitTime));
-        return this.generate(config);
-      }
-
-      throw new Error(`HF API error (${response.status}): ${errorText}`);
-    }
-
-    // Response is the image binary
-    const buffer = Buffer.from(await response.arrayBuffer());
-    await fs.writeFile(outputPath, buffer);
-
-    return outputPath;
   }
 
   async generateBatch(configs: ImageGenerationConfig[]): Promise<string[]> {
